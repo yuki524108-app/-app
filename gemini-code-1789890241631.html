@@ -1,0 +1,1521 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Liftly — 自重・器具トレーニング管理 ＆ 個別動作アニメーション</title>
+  
+  <!-- 紙吹雪アニメーション用ライブラリ (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+    :root {
+      /* デフォルト：ダークテーマ */
+      --ink: #f0f4f1;
+      --muted: #94a3b8;
+      --paper: #0f1712;
+      --card: #18231c;
+      --card-inner: #223127;
+      --line: #2d3f33;
+      --forest: #22c55e;
+      --forest-dark: #16a34a;
+      --mint: #1b3829;
+      --amber: #f5b93f;
+      --amber-bg: #382d14;
+      --rose: #ef4444;
+      --rose-bg: #3b1818;
+      --input-bg: #111a14;
+    }
+
+    /* ライトテーマ */
+    [data-theme="light"] {
+      --ink: #0f172a;
+      --muted: #64748b;
+      --paper: #f8fafc;
+      --card: #ffffff;
+      --card-inner: #f1f5f9;
+      --line: #e2e8f0;
+      --forest: #2563eb;
+      --forest-dark: #1d4ed8;
+      --mint: #e0f2fe;
+      --amber: #d97706;
+      --amber-bg: #fef3c7;
+      --rose: #dc2626;
+      --rose-bg: #fee2e2;
+      --input-bg: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif; transition: background 0.3s, color 0.3s; }
+    .app { max-width: 1080px; margin: auto; padding: 24px 20px 60px; }
+    
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .brand { font-size: 26px; font-weight: 800; letter-spacing: -0.7px; }
+    .brand b { color: var(--forest); }
+    .date { color: var(--muted); font-size: 14px; }
+
+    /* Hero / Status Score / Streak */
+    .hero { background: var(--forest); color: #fff; border-radius: 20px; padding: 26px; display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; transition: background 0.3s; }
+    .hero.warning { background: #8a3b14; }
+    .eyebrow { font-size: 13px; opacity: 0.9; margin: 0 0 6px; }
+    .hero h1 { font-size: 26px; line-height: 1.35; margin: 0 0 10px; letter-spacing: -0.5px; }
+    .hero p { margin: 0; opacity: 0.9; font-size: 14px; line-height: 1.6; }
+    .score { background: rgba(0, 0, 0, 0.2); border-radius: 16px; padding: 18px; text-align: center; }
+    .score .num { font-size: 40px; font-weight: 800; }
+    .score small { display: block; margin-top: 2px; opacity: 0.85; font-size: 12px; }
+    .meter { height: 8px; background: rgba(255, 255, 255, 0.25); border-radius: 99px; margin: 12px 0 6px; overflow: hidden; }
+    .meter i { display: block; height: 100%; border-radius: inherit; background: #ffffff; transition: width 0.4s; }
+
+    /* ストリーク表示 */
+    .streak-banner { background: var(--amber-bg); border: 1px solid var(--amber); color: var(--ink); border-radius: 14px; padding: 10px 16px; margin-top: 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; }
+    .streak-banner small { font-weight: normal; color: var(--muted); }
+
+    /* Tabs (PC / 標準表示) */
+    .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin: 28px 0 20px; }
+    .tabs button { padding: 0 0 12px; border: 0; background: 0; color: var(--muted); font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; transition: color 0.2s, border-color 0.2s; }
+    .tabs button.active { color: var(--forest); border-bottom-color: var(--forest); font-weight: 700; }
+
+    /* Layout & Panels */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .layout { display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; }
+    .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 20px; transition: background 0.3s, border-color 0.3s; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .panel h2 { font-size: 17px; margin: 0; }
+    .sub { font-size: 13px; color: var(--muted); margin: 4px 0 16px; }
+
+    /* Purpose Chips & Equipment Chips */
+    .purpose-selector, .equipment-selector { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px; }
+    .chip { border: 1px solid var(--line); background: var(--card-inner); padding: 8px 14px; border-radius: 99px; font-size: 13px; cursor: pointer; white-space: nowrap; transition: 0.2s; color: var(--ink); }
+    .chip.active { background: var(--forest); color: #ffffff; border-color: var(--forest); font-weight: 600; }
+
+    /* Safety Alert Banner */
+    .safety-banner { display: none; background: var(--amber-bg); border: 1px solid var(--amber); border-radius: 14px; padding: 14px; margin-bottom: 18px; color: var(--ink); font-size: 13px; line-height: 1.5; }
+    .safety-banner.show { display: flex; gap: 10px; align-items: flex-start; }
+
+    /* Soreness 4-Stage selector */
+    .soreness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .soreness-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--card-inner); cursor: pointer; transition: 0.2s; color: var(--ink); }
+    .soreness-card strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    .soreness-card .level-tag { font-size: 11px; padding: 2px 8px; border-radius: 99px; display: inline-block; background: var(--paper); color: var(--muted); }
+    .soreness-card[data-level="0"] .level-tag { background: var(--mint); color: var(--forest); }
+    .soreness-card[data-level="1"] .level-tag { background: rgba(37, 99, 235, 0.15); color: #3b82f6; }
+    .soreness-card[data-level="2"] .level-tag { background: var(--amber-bg); color: var(--amber); }
+    .soreness-card[data-level="3"] { border-color: var(--rose); background: var(--rose-bg); }
+    .soreness-card[data-level="3"] .level-tag { background: var(--rose); color: white; }
+
+    /* Workout Items & Controls */
+    .workout-card { background: var(--mint); border-radius: 16px; padding: 18px; border: 1px solid var(--line); }
+    .exercise-item { background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid var(--line); position: relative; color: var(--ink); }
+    .exercise-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-right: 28px; gap: 8px; flex-wrap: wrap; }
+    .exercise-title { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .btn-info { background: var(--card-inner); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--forest); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+    .btn-info:hover { opacity: 0.8; }
+
+    .btn-delete { position: absolute; top: 12px; right: 12px; border: 0; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px; border-radius: 6px; transition: 0.2s; }
+    .btn-delete:hover { color: var(--rose); background: var(--rose-bg); }
+
+    .adjust-btn { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--card-inner); cursor: pointer; font-weight: bold; color: var(--ink); }
+    .sets-row { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; align-items: center; }
+    .set-chip { flex: 1; border: 1px solid var(--line); background: var(--card-inner); border-radius: 8px; padding: 6px; text-align: center; font-size: 12px; cursor: pointer; color: var(--ink); }
+    .set-chip.done { background: var(--forest); color: white; border-color: var(--forest); }
+
+    .adjust-sets { display: flex; flex-direction: column; gap: 4px; }
+    .adjust-sets button { padding: 2px 6px; font-size: 10px; }
+    .weight-input { width: 54px; padding: 4px; border: 1px solid var(--line); border-radius: 6px; text-align: center; font-size: 12px; background: var(--input-bg); color: var(--ink); }
+
+    .btn-reset-workout { background: transparent; border: 1px solid var(--forest); color: var(--forest); font-size: 12px; font-weight: bold; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+    .btn-reset-workout:hover { background: var(--mint); }
+
+    /* Modal Guide Overlay & SVG Animation Engine */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.75); z-index: 1000; justify-content: center; align-items: center; padding: 20px; }
+    .modal-overlay.show { display: flex; }
+    .modal-card { background: var(--card); border-radius: 20px; width: 100%; max-width: 520px; padding: 24px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); color: var(--ink); border: 1px solid var(--line); }
+    .modal-close { position: absolute; top: 16px; right: 16px; border: 0; background: var(--card-inner); color: var(--ink); width: 32px; height: 32px; border-radius: 50%; font-size: 18px; cursor: pointer; display: grid; place-items: center; }
+    
+    .modal-illustration { background: #0b120d; border-radius: 16px; height: 210px; display: flex; align-items: center; justify-content: center; margin: 16px 0; border: 1px solid var(--line); overflow: hidden; position: relative; }
+    .modal-illustration svg { width: 100%; height: 100%; max-height: 200px; }
+
+    .modal-tag { background: var(--mint); color: var(--forest); font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 99px; display: inline-block; margin-bottom: 8px; }
+    .modal-card h3 { margin: 0 0 6px; font-size: 20px; }
+    .modal-card p { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 0 0 16px; }
+    .points-list { background: var(--card-inner); border-radius: 12px; padding: 14px; font-size: 13px; line-height: 1.6; border: 1px solid var(--line); }
+    .points-list strong { color: var(--forest); display: block; margin-bottom: 6px; }
+    .points-list ul { margin: 0; padding-left: 18px; }
+
+    /* SVG Keyframe アニメーション */
+    .muscle-highlight { animation: muscle-pulse 2.4s infinite ease-in-out; }
+    @keyframes muscle-pulse {
+      0%, 100% { fill: #384d41; opacity: 0.4; }
+      50% { fill: #ff4757; opacity: 1; filter: drop-shadow(0 0 8px #ff4757); }
+    }
+    .motion-arrow { animation: arrow-anim 2.4s infinite ease-in-out; }
+    @keyframes arrow-anim {
+      0%, 100% { opacity: 0.2; transform: translateY(-4px); }
+      50% { opacity: 1; transform: translateY(4px); }
+    }
+
+    /* Timer Widget */
+    .timer-box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; text-align: center; margin-top: 14px; }
+    .timer-display { font-size: 28px; font-weight: 800; font-family: monospace; color: var(--forest); margin: 4px 0; }
+    .timer-controls button { padding: 6px 14px; border: 0; background: var(--forest); color: white; border-radius: 8px; font-size: 12px; cursor: pointer; margin: 0 2px; }
+
+    /* Buttons & Actions */
+    .cta { width: 100%; border: 0; background: var(--forest); color: white; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+    .cta:hover { background: var(--forest-dark); }
+    .btn-secondary { background: var(--card-inner); color: var(--ink); border: 1px solid var(--line); }
+
+    /* Analytics / Graphs */
+    .weekly-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; margin-bottom: 16px; }
+    .day-box { border: 1px solid var(--line); border-radius: 10px; padding: 8px 4px; font-size: 11px; background: var(--card-inner); color: var(--ink); }
+    .day-box.done { background: var(--mint); border-color: var(--forest); font-weight: bold; color: var(--forest); }
+    
+    .volume-bars-graph { display: flex; flex-direction: column; gap: 10px; }
+    .volume-bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .volume-bar-label { width: 40px; color: var(--muted); }
+    .volume-bar-bg { flex: 1; height: 10px; background: var(--card-inner); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+    .volume-bar-fill { height: 100%; background: var(--forest); border-radius: inherit; width: 0%; transition: width 0.4s; }
+    .volume-bar-val { width: 35px; text-align: right; color: var(--muted); }
+
+    /* History List Items */
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .history-btn-group { display: flex; gap: 6px; }
+    .btn-sm-edit { background: var(--card-inner); border: 1px solid var(--line); color: var(--ink); font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+    .btn-sm-delete { background: var(--rose-bg); border: 1px solid var(--rose); color: var(--rose); font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+
+    /* Edit History Form */
+    .edit-history-card { background: var(--card-inner); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 18px; }
+    .edit-history-card h3 { font-size: 15px; margin: 0 0 10px; }
+    .parts-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .parts-checkboxes label { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    
+    /* 追加した種目のタグ */
+    .ex-tag { display: inline-flex; align-items: center; gap: 4px; background: var(--card); border: 1px solid var(--line); padding: 4px 10px; border-radius: 99px; font-size: 12px; color: var(--ink); }
+    .ex-tag-del { cursor: pointer; color: var(--muted); font-weight: bold; background: transparent; border: none; padding: 0 4px; font-size: 12px; display: grid; place-items: center; }
+    .ex-tag-del:hover { color: var(--rose); }
+
+    /* Settings Form */
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group select, .form-group input[type="number"], .form-group input[type="text"], .form-group input[type="date"] { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--input-bg); font-size: 14px; color: var(--ink); }
+
+    /* テーマスイッチ */
+    .theme-switch-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 10px 16px; background: var(--card-inner); }
+    .theme-switch-label { font-size: 14px; font-weight: bold; }
+    .theme-switch-input { display: none; }
+    .theme-switch-toggle { width: 48px; height: 24px; background: var(--line); border-radius: 99px; position: relative; cursor: pointer; transition: 0.3s; }
+    .theme-switch-toggle::after { content: ''; width: 18px; height: 18px; background: #fff; border-radius: 50%; position: absolute; top: 3px; left: 3px; transition: 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .theme-switch-input:checked + .theme-switch-toggle { background: var(--forest); }
+    .theme-switch-input:checked + .theme-switch-toggle::after { transform: translateX(24px); }
+
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: #18211d; color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 14px; opacity: 0; transition: 0.25s; pointer-events: none; z-index: 999; border: 1px solid var(--line); }
+    .toast.show { opacity: 1; }
+
+    /* --- スマホ表示時のレスポンシブ ＆ ボトムナビゲーション対応 --- */
+    @media (max-width: 720px) {
+      .hero, .layout { grid-template-columns: 1fr; }
+      .app { padding: 16px 14px 80px; } /* ボトムナビゲーションの被り防止 */
+
+      .tabs {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        margin: 0;
+        padding: 8px 12px;
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        border-bottom: none;
+        z-index: 1000;
+        justify-content: space-around;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      .tabs button {
+        padding: 8px 12px;
+        font-size: 13px;
+        border-bottom: none !important;
+        border-radius: 8px;
+        flex: 1;
+        text-align: center;
+      }
+
+      .tabs button.active {
+        background: var(--mint);
+        color: var(--forest);
+      }
+
+      .toast {
+        bottom: 75px; /* ボトムナビの上に表示 */
+      }
+    }
+  </style>
+</head>
+<body data-theme="dark">
+  <main class="app">
+    <header>
+      <div class="brand"><b>lift</b>ly</div>
+      <div class="date" id="current-date">----年--月--日</div>
+    </header>
+
+    <!-- HERO SECTION & Streak -->
+    <section class="hero" id="hero-card">
+      <div>
+        <p class="eyebrow">コンディション評価</p>
+        <h1 id="hero-title">読み込み中...</h1>
+        <p id="hero-desc">完全回復した（痛みのない）部位 ＆ あなたの所持器具のみから本日の分割メニューを作成します。</p>
+        
+        <div class="streak-banner">
+          <span>🚀</span>
+          <span>連続実施日数: <span id="streak-num">0</span>日ストリーク！</span>
+          <small>継続は力なり、この調子で！</small>
+        </div>
+      </div>
+      <div class="score">
+        <span>回復スコア</span>
+        <div class="num" id="score-num">--</div>
+        <div class="meter"><i id="score-meter" style="width: 0%;"></i></div>
+        <small id="score-status">状態を計算中</small>
+      </div>
+    </section>
+
+    <!-- TABS (スマホでは画面下部に固定配置されます) -->
+    <nav class="tabs">
+      <button class="active" onclick="switchTab('workout')">ワークアウト</button>
+      <button onclick="switchTab('analytics')">分析・履歴</button>
+      <button onclick="switchTab('settings')">設定</button>
+    </nav>
+
+    <!-- TAB 1: WORKOUT -->
+    <div id="tab-workout" class="tab-content active">
+      <div class="layout">
+        <div>
+          <!-- Safety banner -->
+          <div class="safety-banner" id="safety-banner">
+            <span>⚠️</span>
+            <div>
+              <strong>強い筋肉痛が登録されています</strong><br>
+              無理なトレーニングはケガの原因となります。今日は「完全休養」を強く推奨します。
+            </div>
+          </div>
+
+          <!-- Target profile selector -->
+          <div class="panel">
+            <h2>トレーニング目的</h2>
+            <p class="sub">目的に応じて負荷レベルとセット数を自動設定します</p>
+            <div class="purpose-selector">
+              <button class="chip active" data-purpose="habit" onclick="setPurpose('habit')">🌱 習慣化</button>
+              <button class="chip" data-purpose="strength" onclick="setPurpose('strength')">💪 筋力アップ</button>
+              <button class="chip" data-purpose="diet" onclick="setPurpose('diet')">🔥 ダイエット</button>
+              <button class="chip" data-purpose="posture" onclick="setPurpose('posture')">🧘 姿勢改善</button>
+            </div>
+          </div>
+
+          <!-- Suggested Workout Card -->
+          <section class="panel">
+            <div class="panel-header">
+              <h2>本日の決定メニュー</h2>
+              <button class="btn-reset-workout" onclick="resetToSuggestedWorkout()">おすすめに再生成</button>
+            </div>
+            <p class="sub">おすすめ（回復部位 ＆ 所持器具のみ）をベースに、自由に追加・削除して本日のメニューを調整できます</p>
+            <div class="workout-card">
+              <div id="workout-list"></div>
+              
+              <!-- Timer Widget -->
+              <div class="timer-box">
+                <small style="color:var(--muted)">セット間インターバルタイマー</small>
+                <div class="timer-display" id="timer-display">00:45</div>
+                <div class="timer-controls">
+                  <button onclick="startTimer(30)">30秒</button>
+                  <button onclick="startTimer(45)">45秒</button>
+                  <button onclick="startTimer(60)">60秒</button>
+                  <button onclick="resetTimer()" style="background:var(--muted)">停止</button>
+                </div>
+              </div>
+
+              <button class="cta" id="complete-btn" onclick="completeWorkout()">このメニューを完了・記録する</button>
+            </div>
+          </section>
+
+          <!-- Custom Workout Builder -->
+          <section class="panel">
+            <h2>カスタムメニューを追加</h2>
+            <p class="sub">リストから種目を選んで本日のメニューに追加します（あなたの所持器具の種目のみ表示されます）</p>
+            <div style="display:flex; gap:8px;">
+              <select id="custom-select" style="flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); color: var(--ink); background: var(--input-bg);">
+              </select>
+              <button class="cta" style="width:auto; margin:0; padding:10px 16px;" onclick="addCustomExercise()">追加</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right Side: Muscle Soreness Input -->
+        <aside>
+          <section class="panel">
+            <h2>筋肉痛の記録 (4段階)</h2>
+            <p class="sub">タップして切替：「なし」の部位のみおすすめ対象になります</p>
+            <div class="soreness-grid" id="soreness-container"></div>
+          </section>
+
+          <section class="panel">
+            <h2>💡 回復・補強アドバイス</h2>
+            <div id="weakness-recommend" style="font-size:13px; color:var(--muted); line-height:1.5;"></div>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <!-- TAB 2: ANALYTICS -->
+    <div id="tab-analytics" class="tab-content">
+      <div class="layout">
+        <section class="panel">
+          <h2>今週の実施状況</h2>
+          <p class="sub">過去7日間のトレーニング実績</p>
+          <div class="weekly-cal" id="weekly-cal"></div>
+          
+          <h2 style="margin-top:24px;">部位別ボリュームグラフ</h2>
+          <p class="sub">過去のトレーニングで負荷をかけた部位の累積セット数</p>
+          <div class="volume-bars-graph" id="volume-bars-graph"></div>
+        </section>
+
+        <section class="panel">
+          <h2>実施履歴 ＆ 編集</h2>
+          <p class="sub">過去の記録の修正・追加・削除を行えます</p>
+          
+          <!-- 過去記録の追加・編集用フォーム -->
+          <div class="edit-history-card">
+            <h3 id="edit-form-title">📝 過去・指定日の記録を追加・編集</h3>
+            <div class="form-group">
+              <label>日付</label>
+              <input type="date" id="hist-edit-date">
+            </div>
+            
+            <div class="form-group">
+              <label>実施した種目を選ぶ (任意)</label>
+              <div style="display:flex; gap:8px; margin-bottom:8px;">
+                <select id="hist-edit-exercise-select" style="flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); color: var(--ink); background: var(--input-bg);"></select>
+                <button class="cta" style="width:auto; margin:0; padding:10px 16px;" onclick="addHistoryExercise()">追加</button>
+              </div>
+              <div id="hist-edit-exercise-tags" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
+
+            <div class="form-group">
+              <label>タイトル・種目メモ</label>
+              <input type="text" id="hist-edit-title" placeholder="例: 胸・腕の強化、本日決定メニュー">
+            </div>
+            <div class="form-group">
+              <label>鍛えた部位 (複数選択可)</label>
+              <div class="parts-checkboxes" id="hist-edit-parts-container"></div>
+            </div>
+            <div class="form-group">
+              <label>運動時間 (分)</label>
+              <input type="number" id="hist-edit-duration" value="20" min="5" max="180">
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="cta" style="margin-top:0;" onclick="saveHistoryRecord()">記録を保存</button>
+              <button class="cta btn-secondary" style="margin-top:0; width:auto;" onclick="clearHistoryForm()">クリア</button>
+            </div>
+          </div>
+
+          <div id="history-list" style="font-size:13px; color: var(--muted); margin-bottom: 24px;"></div>
+          
+          <h2 style="margin-top:24px;">自己ベスト記録 (MAX重量・最高回数)</h2>
+          <div id="best-records-list" style="font-size:13px; color: var(--muted);">
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- TAB 3: SETTINGS -->
+    <div id="tab-settings" class="tab-content">
+      <section class="panel" style="max-width:600px; margin:auto;">
+        <h2>ユーザー設定</h2>
+        <p class="sub">提案アルゴリズム ＆ 表示の調整用パラメータ</p>
+        
+        <div class="theme-switch-row form-group">
+          <span class="theme-switch-label">ライトモード / ダークモード</span>
+          <label>
+            <input type="checkbox" id="theme-switch-input" class="theme-switch-input" onchange="toggleTheme()">
+            <span class="theme-switch-toggle"></span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label>経験レベル</label>
+          <select id="setting-level" onchange="saveSettings()">
+            <option value="beginner">初級 (自重トレーニング初心者)</option>
+            <option value="intermediate">中級 (習慣化できている)</option>
+            <option value="advanced">上級 (高負荷を好む)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>1回の希望運動時間（部位数の分割基準）</label>
+          <select id="setting-time" onchange="saveSettings()">
+            <option value="10">10分 (1部位に集中)</option>
+            <option value="20">20分 (標準・2部位)</option>
+            <option value="30">30分 (しっかり・3部位)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>目標の運動頻度</label>
+          <select id="setting-freq" onchange="saveSettings()">
+            <option value="2">週 2回</option>
+            <option value="3">週 3回</option>
+            <option value="4">週 4回以上</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>あなたの所持器具（選択した器具の種目が提案対象になります）</label>
+          <div class="equipment-selector" id="setting-equipment">
+          </div>
+        </div>
+
+        <button class="cta btn-secondary" onclick="resetAllData()">データを初期状態にリセット</button>
+      </section>
+    </div>
+  </main>
+
+  <!-- MODAL: EXERCISE GUIDE -->
+  <div class="modal-overlay" id="guide-modal" onclick="closeGuideModal(event)">
+    <div class="modal-card">
+      <button class="modal-close" onclick="hideGuideModal()">✕</button>
+      <span class="modal-tag" id="modal-part">胸</span>
+      <h3 id="modal-title">プッシュアップ</h3>
+      
+      <div class="modal-illustration" id="modal-illustration"></div>
+
+      <p id="modal-desc">説明文がここに入ります。</p>
+
+      <div class="points-list">
+        <strong>💡 フォームのポイント</strong>
+        <ul id="modal-points">
+          <li>ポイント1</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const MUSCLE_LIST = ["胸", "肩", "背中", "腕", "お腹", "脚"];
+    
+    const EQUIPMENT_DB = {
+      bodyweight: "🤸 自重",
+      dumbbell: "🏋️ ダンベル",
+      barbell: "🏋️‍♂️ バーベル",
+      tube: "➰ チューブ",
+      parallette: "📐 パラレット"
+    };
+
+    const EXERCISE_GUIDES = {
+      "プッシュアップ": {
+        part: "胸・二の腕", svgType: "pushup",
+        desc: "胸（大胸筋）と二の腕、体幹を一度に鍛える自重トレーニングの基本です。",
+        points: ["手は肩幅より広めに開き、手ぐしを開く", "頭からかかとまで身体を真っ直ぐ一直線に保つ", "胸が床に近づくまで肘を曲げて沈み込む"]
+      },
+      "膝立ちプッシュアップ": {
+        part: "胸（初心者向け）", svgType: "pushup_knee",
+        desc: "膝をついて行うプッシュアップ。負荷が軽いため初心者におすすめです。",
+        points: ["膝を床につき、足首を軽く交差させる", "お腹を引き締め腰が反らないように注意する", "胸を床に近づけるようにしっかり沈み込む"]
+      },
+      "パイププッシュアップ": {
+        part: "肩（三角筋）", svgType: "pike",
+        desc: "お尻を高く持ち上げて行うことで、肩（三角筋）へ直接負荷をかけます。",
+        points: ["体をハの字（山型）に折りたたむ", "頭頂部を両手の少し前の床へ向けて斜めに下ろす", "肩の力で床を力強く押し返す"]
+      },
+      "インバーテッドロウ": {
+        part: "背中（広背筋）", svgType: "inverted_row",
+        desc: "低いバーやテーブルにぶら下がり、身体を引き上げる背中の代表種目です。",
+        points: ["胸を張り、肩甲骨を寄せるように引く", "頭から足まで一直線を保ったまま上体を引き上げる", "引ききった位置で1秒キープ"]
+      },
+      "タオルラットプルダウン": {
+        part: "背筋・肩甲骨", svgType: "towel_row",
+        desc: "タオルを左右に引っ張りながら引き下ろすことで、器具なしで背筋を効かせます。",
+        points: ["タオルがたるまないよう常に外側へ強く張る", "肘を脇腹に向かって深く引き下げる", "肩甲骨同士を固く寄せる"]
+      },
+      "リバースプッシュアップ": {
+        part: "二の腕（上腕三頭筋）", svgType: "reverse_pushup",
+        desc: "台や椅子の縁を利用して、二の腕（たぷたぷの裏側）を集中補強します。",
+        points: ["指先を前へ向け、椅子のフチを握る", "肘が外に広がらないよう真後ろに曲げる", "二の腕の裏側を使ってグッと上体を持ち上げる"]
+      },
+      "プランク": {
+        part: "お腹・体幹", svgType: "plank",
+        desc: "肘と足先で身体を浮かせ、インナーマッスル全体を刺激します。",
+        points: ["肘は肩の真下に配置する", "腰を反らせたり浮かせたりせず頭から一直線に", "お腹に力を入れ息を止めずに自然呼吸"]
+      },
+      "クランチ": {
+        part: "お腹（腹直筋）", svgType: "crunch",
+        desc: "お腹の上部を集中的に縮める、腰に優しい腹筋運動です。",
+        points: ["仰向けになり膝を90度に曲げる", "腰は床につけたまま、おへそを覗き込むように丸まる", "手で頭を引っ張らず腹筋で上体を起こす"]
+      },
+      "レッグレイズ": {
+        part: "下腹部", svgType: "legraise",
+        desc: "仰向けで足を上下させ、ぽっこりお腹（下腹部）にダイレクトに効かせます。",
+        points: ["腰が床から浮かないよう背中を床に押し当てる", "足の重みを感じながらゆっくり上げ下ろし", "床につくギリギリで止めて折り返す"]
+      },
+      "スクワット": {
+        part: "脚全体・お尻", svgType: "squat",
+        desc: "下半身の大きな筋肉を一度に動かす最高効率の自重トレーニングです。",
+        points: ["足幅は肩幅より少し広め、つま先はやや外向き", "お尻を斜め後ろに引くように腰を落とす", "太ももが床と平行になるまで深く沈む"]
+      },
+      "ワイドスクワット": {
+        part: "太もも内側・お尻", svgType: "wide_squat",
+        desc: "足幅を大きく開いて行い、内もも（内転筋）とお尻を引き締めます。",
+        points: ["足幅を肩幅の1.5〜2倍に広げる", "つま先と膝を45度外側に向ける", "内ももが伸びるのを感じながら腰を落とす"]
+      },
+      "リバースランジ": {
+        part: "お尻・裏もも", svgType: "lunge",
+        desc: "一歩後ろに足を引いて沈み込み、ヒップアップ効果を高めます。",
+        points: ["背筋を伸ばし、片足を大きく後ろに引く", "前脚の膝がつま先より前に出過ぎないよう意識", "前脚のかかとで床を押して立ち上がる"]
+      },
+      "D-プッシュアップ": {
+        part: "胸・腕 (ダンベル)", svgType: "pushup",
+        desc: "ダンベルを握って行い、胸の可動域を広げます。",
+        points: ["ダンベルのグリップを握り床に置く", "通常より深く沈み込む", "手首を痛めないよう注意"]
+      },
+      "D-スクワット": {
+        part: "脚・お尻 (ダンベル)", svgType: "squat",
+        desc: "ダンベルを両手に持って負荷を高めたスクワットです。",
+        points: ["通常スクワットのフォームを守る", "ダンベルは腕の力で持たず重りとして扱う"]
+      }
+    };
+
+    const EXERCISE_DB = {
+      "胸": [
+        { name: "プッシュアップ", baseReps: 12, sets: 3, equipment: "bodyweight" },
+        { name: "膝立ちプッシュアップ", baseReps: 10, sets: 3, equipment: "bodyweight" },
+        { name: "D-プッシュアップ", baseReps: 8, sets: 3, equipment: "dumbbell", isWeighted: true }
+      ],
+      "肩": [
+        { name: "パイププッシュアップ", baseReps: 8, sets: 3, equipment: "bodyweight" }
+      ],
+      "背中": [
+        { name: "インバーテッドロウ", baseReps: 10, sets: 3, equipment: "bodyweight" },
+        { name: "タオルラットプルダウン", baseReps: 15, sets: 3, equipment: "bodyweight" }
+      ],
+      "腕": [
+        { name: "リバースプッシュアップ", baseReps: 12, sets: 3, equipment: "bodyweight" }
+      ],
+      "お腹": [
+        { name: "プランク", baseReps: 30, unit: "秒", sets: 3, equipment: "bodyweight" },
+        { name: "クランチ", baseReps: 15, sets: 3, equipment: "bodyweight" },
+        { name: "レッグレイズ", baseReps: 12, sets: 3, equipment: "bodyweight" }
+      ],
+      "脚": [
+        { name: "スクワット", baseReps: 15, sets: 3, equipment: "bodyweight" },
+        { name: "リバースランジ", baseReps: 10, sets: 3, equipment: "bodyweight" },
+        { name: "ワイドスクワット", baseReps: 12, sets: 3, equipment: "bodyweight" },
+        { name: "D-スクワット", baseReps: 10, sets: 3, equipment: "dumbbell", isWeighted: true }
+      ]
+    };
+
+    // State
+    let state = {
+      purpose: "habit",
+      streak: 0,
+      lastCompletedDate: null,
+      soreness: { "胸": 0, "肩": 0, "背中": 0, "腕": 0, "お腹": 0, "脚": 0 },
+      settings: { 
+        level: "beginner", time: "20", freq: "3",
+        equipment: ['bodyweight'],
+        theme: 'dark'
+      },
+      activeWorkout: null,
+      completedToday: false,
+      history: [],
+      bestRecords: {}
+    };
+
+    // 履歴フォーム用の選択済み種目ステート
+    let currentHistExercises = [];
+
+    function loadData() {
+      const saved = localStorage.getItem('liftly_final_v3');
+      if (saved) {
+        try { state = JSON.parse(saved); } catch(e){}
+      } else {
+        // 保存データがない場合、端末のOSダークモード設定を初期自動検出
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+          state.settings.theme = 'light';
+        }
+      }
+      
+      document.getElementById('setting-level').value = state.settings.level || "beginner";
+      document.getElementById('setting-time').value = state.settings.time || "20";
+      document.getElementById('setting-freq').value = state.settings.freq || "3";
+      
+      const themeSwitch = document.getElementById('theme-switch-input');
+      themeSwitch.checked = state.settings.theme === 'light';
+      updateTheme();
+      
+      const equipSetting = document.getElementById('setting-equipment');
+      equipSetting.innerHTML = "";
+      Object.entries(EQUIPMENT_DB).forEach(([key, name]) => {
+        const isSelected = state.settings.equipment.includes(key);
+        const button = document.createElement('button');
+        button.className = `chip ${isSelected ? 'active' : ''}`;
+        button.textContent = name;
+        button.onclick = () => toggleEquipment(key, button);
+        equipSetting.appendChild(button);
+      });
+
+      const todayStr = getTodayString();
+      if (state.lastCompletedDate === todayStr && (!state.activeWorkout || state.activeWorkout.length === 0)) {
+        state.completedToday = true;
+      } else {
+        state.completedToday = false;
+        if (!state.activeWorkout || state.activeWorkout.length === 0) {
+          state.activeWorkout = generateWorkout();
+        }
+      }
+      
+      initHistoryFormParts();
+      clearHistoryForm();
+      updateStreakDisplay();
+      renderApp();
+    }
+
+    // サイレント保存（画面の再描画を行わない）
+    function saveDataSilent() {
+      localStorage.setItem('liftly_final_v3', JSON.stringify(state));
+    }
+
+    function saveData() {
+      saveDataSilent();
+      renderApp();
+    }
+
+    function getTodayString() {
+      const today = new Date();
+      return `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    }
+
+    function notify(text) {
+      const t = document.getElementById('toast');
+      t.textContent = text;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+    
+    function toggleTheme() {
+      state.settings.theme = document.getElementById('theme-switch-input').checked ? 'light' : 'dark';
+      saveData();
+      updateTheme();
+    }
+    function updateTheme() {
+      document.body.setAttribute('data-theme', state.settings.theme);
+    }
+    
+    function setPurpose(p) {
+      state.purpose = p;
+      state.completedToday = false;
+      state.activeWorkout = generateWorkout();
+      saveData();
+      notify(`トレーニング目的を「${getPurposeLabel(p)}」に変更しました`);
+    }
+
+    function getPurposeLabel(p) {
+      switch(p) {
+        case 'habit': return '🌱 習慣化';
+        case 'strength': return '💪 筋力アップ';
+        case 'diet': return '🔥 ダイエット';
+        case 'posture': return '🧘 姿勢改善';
+        default: return '';
+      }
+    }
+
+    function toggleEquipment(key, button) {
+      const isSelected = state.settings.equipment.includes(key);
+      if (isSelected) {
+        if (key === 'bodyweight') { notify("自重トレーニングは必須です"); return; }
+        state.settings.equipment = state.settings.equipment.filter(e => e !== key);
+      } else {
+        state.settings.equipment.push(key);
+      }
+      button.classList.toggle('active', !isSelected);
+      saveData();
+      notify(`所持器具「${EQUIPMENT_DB[key]}」を${isSelected ? '削除' : '追加'}しました`);
+    }
+
+    function generateWorkout() {
+      const restedParts = MUSCLE_LIST.filter(m => state.soreness[m] === 0);
+      if (restedParts.length === 0) return [];  
+
+      const ownedEquipment = state.settings.equipment || ['bodyweight'];
+
+      let targetPartCount = 2;
+      const duration = parseInt(state.settings.time) || 20;
+      if (duration <= 10) targetPartCount = 1;
+      else if (duration >= 30) targetPartCount = 3;
+
+      const partLastUsed = {};
+      MUSCLE_LIST.forEach(p => partLastUsed[p] = 999);
+      if (state.history) {
+        state.history.forEach((h, index) => {
+          if (h.parts) {
+            h.parts.forEach(p => {
+              if (partLastUsed[p] === 999) partLastUsed[p] = index;
+            });
+          }
+        });
+      }
+
+      let selectedParts = [...restedParts].sort((a, b) => partLastUsed[b] - partLastUsed[a]);
+      selectedParts = selectedParts.slice(0, targetPartCount);
+
+      let multiplier = 1;
+      if (state.purpose === 'strength') multiplier = 1.25;
+      if (state.purpose === 'diet') multiplier = 1.1;
+
+      const exercises = [];
+      selectedParts.forEach(part => {
+        const pool = EXERCISE_DB[part];
+        const validExercises = pool.filter(ex => ownedEquipment.includes(ex.equipment));
+        if (validExercises.length > 0) {
+          const ex = validExercises[0];
+          exercises.push({
+            name: ex.name,
+            part: part,
+            icon: "💪",
+            reps: Math.round(ex.baseReps * multiplier),
+            unit: ex.unit || "回",
+            sets: ex.sets,
+            isWeighted: ex.isWeighted || false,
+            weight: ex.isWeighted ? 5 : 0,
+            completedSets: 0,
+            equipment: ex.equipment
+          });
+        }
+      });
+      return exercises;
+    }
+    
+    // カスタム追加用＆履歴フォーム用のドロップダウンを構築
+    function filterCustomExercises() {
+      const select = document.getElementById('custom-select');
+      const histSelect = document.getElementById('hist-edit-exercise-select');
+      select.innerHTML = "";
+      histSelect.innerHTML = "";
+      
+      const ownedEquipment = state.settings.equipment || ['bodyweight'];
+      
+      MUSCLE_LIST.forEach(part => {
+        const pool = EXERCISE_DB[part];
+        pool.forEach(ex => {
+          if (ownedEquipment.includes(ex.equipment)) {
+            // ワークアウト用
+            const option = document.createElement('option');
+            option.value = `${ex.name}|${part}`;
+            option.textContent = `${ex.name} (${part}) [${EQUIPMENT_DB[ex.equipment] || ex.equipment}]`;
+            select.appendChild(option);
+
+            // 履歴追加用
+            const histOption = document.createElement('option');
+            histOption.value = `${ex.name}|${part}`;
+            histOption.textContent = `${ex.name} (${part}) [${EQUIPMENT_DB[ex.equipment] || ex.equipment}]`;
+            histSelect.appendChild(histOption);
+          }
+        });
+      });
+    }
+
+    function resetToSuggestedWorkout() {
+      state.completedToday = false;
+      state.activeWorkout = generateWorkout();
+      resetTimer();
+      saveData();
+      notify("おすすめメニューに再生成しました");
+    }
+
+    function renderApp() {
+      const today = new Date();
+      document.getElementById('current-date').textContent = `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日`;
+
+      document.querySelectorAll('.purpose-selector .chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.purpose === state.purpose);
+      });
+
+      let sorenessTotal = 0;
+      let hasSevereSoreness = false;
+      Object.values(state.soreness).forEach(val => {
+        sorenessTotal += val;
+        if (val === 3) hasSevereSoreness = true;
+      });
+
+      let score = Math.max(30, 100 - (sorenessTotal * 8));
+      document.getElementById('score-num').textContent = score;
+      document.getElementById('score-meter').style.width = score + "%";
+
+      const heroCard = document.getElementById('hero-card');
+      const heroTitle = document.getElementById('hero-title');
+      const heroDesc = document.getElementById('hero-desc');
+      const safetyBanner = document.getElementById('safety-banner');
+
+      if (hasSevereSoreness) {
+        heroCard.classList.add('warning');
+        heroTitle.innerHTML = "今日は無理せず、<br>カラダを休めよう。";
+        heroDesc.textContent = "強い筋肉痛が検出されています。回復を最優先にする日です。";
+        safetyBanner.classList.add('show');
+      } else {
+        heroCard.classList.remove('warning');
+        heroTitle.innerHTML = "コンディション管理中";
+        heroDesc.textContent = "筋肉痛のない部位のみ ＆ あなたの所持器具のみから効率メニューを編成します。";
+        safetyBanner.classList.remove('show');
+      }
+
+      // Soreness Grid
+      const sorenessContainer = document.getElementById('soreness-container');
+      sorenessContainer.innerHTML = "";
+      const levelLabels = ["なし (実施対象)", "軽い (超回復中)", "普通 (超回復中)", "強い (完全休養)"];
+      
+      MUSCLE_LIST.forEach(m => {
+        const level = state.soreness[m] || 0;
+        const card = document.createElement('div');
+        card.className = "soreness-card";
+        card.dataset.level = level;
+        card.innerHTML = `<strong>${m}</strong><span class="level-tag">${levelLabels[level]}</span>`;
+        card.onclick = () => {
+          state.soreness[m] = (level + 1) % 4;
+          saveData();
+          notify(`${m}の痛みを「${levelLabels[state.soreness[m]]}」に更新`);
+        };
+        sorenessContainer.appendChild(card);
+      });
+
+      // Workout List Render
+      const workoutList = document.getElementById('workout-list');
+      const completeBtn = document.getElementById('complete-btn');
+      workoutList.innerHTML = "";
+
+      if (state.completedToday && (!state.activeWorkout || state.activeWorkout.length === 0)) {
+        workoutList.innerHTML = `
+          <div style="text-align:center; padding:30px 10px; color:var(--forest);">
+            <div style="font-size:40px; margin-bottom:8px;">🎉</div>
+            <strong style="font-size:18px;">本日のトレーニングは完了しています！</strong><br>
+            <span style="font-size:13px; color:var(--muted);">しっかり休息と栄養をとって超回復を促しましょう。<br>もう一度行う場合は「おすすめに再生成」を押してください。</span>
+          </div>`;
+        completeBtn.style.display = "none";
+      } else if (!state.activeWorkout || state.activeWorkout.length === 0) {
+        workoutList.innerHTML = `
+          <div style="text-align:center; padding:24px 10px; color:var(--muted);">
+            <div style="font-size:32px; margin-bottom:8px;">🛋️</div>
+            <strong>本日の決定メニューはありません</strong><br>
+            <span style="font-size:12px;">設定画面で所持器具を確認、下のカスタム追加、または「おすすめに再生成」をお願いします。</span>
+          </div>`;
+        completeBtn.style.display = "none";
+      } else {
+        completeBtn.style.display = "block";
+        state.activeWorkout.forEach((ex, exIndex) => {
+          const div = document.createElement('div');
+          div.className = "exercise-item";
+
+          let setsHtml = "";
+          for(let i = 0; i < ex.sets; i++) {
+            const isDone = i < ex.completedSets;
+            setsHtml += `<div class="set-chip ${isDone ? 'done' : ''}" onclick="toggleSet(${exIndex}, ${i})">${i+1}セット ${isDone ? '✓' : ''}</div>`;
+          }
+          
+          div.innerHTML = `
+            <button class="btn-delete" onclick="removeExercise(${exIndex})" title="種目を削除">🗑️</button>
+            <div class="exercise-header">
+              <div class="exercise-title">
+                ${ex.name} 
+                <button class="btn-info" onclick="showGuideModal('${ex.name}')">ℹ️ 動きを見る</button>
+              </div>
+              <div style="display:flex; align-items:center;">
+                ${ex.isWeighted ? `<input type="number" value="${ex.weight}" class="weight-input" oninput="adjustWeight(${exIndex}, this.value)"> kg / ` : ""}
+                <button class="adjust-btn" onclick="adjustReps(${exIndex}, -2)">-</button>
+                <span style="font-size:13px; margin:0 4px; font-weight:600;">${ex.reps}${ex.unit}</span>
+                <button class="adjust-btn" onclick="adjustReps(${exIndex}, 2)">+</button>
+              </div>
+            </div>
+            <div class="sets-row">
+              <div class="adjust-sets">
+                <button class="adjust-btn" onclick="adjustSets(${exIndex}, 1)" title="セット数を増やす">+</button>
+                <button class="adjust-btn" onclick="adjustSets(${exIndex}, -1)" title="セット数を減らす">-</button>
+              </div>
+              ${setsHtml}
+            </div>`;
+          workoutList.appendChild(div);
+        });
+      }
+
+      // Advice / Status Summary
+      const weakBox = document.getElementById('weakness-recommend');
+      const recoveredParts = MUSCLE_LIST.filter(m => state.soreness[m] === 0);
+      const ownedEquip = (state.settings.equipment || ['bodyweight']).map(e => EQUIPMENT_DB[e]).join('、');
+      
+      weakBox.innerHTML = `
+        ・<strong>回復部位</strong>: ${recoveredParts.length > 0 ? recoveredParts.join('・') : "なし（全休養）"}<br>
+        ・<strong>所持器具</strong>: ${ownedEquip}<br>
+        ・<strong>補強アドバイス</strong>: 回復している「${recoveredParts[0] || "部位"}」のボリューム（セット数）を高め、超回復を促進しましょう。`;
+
+      renderAnalytics();
+      filterCustomExercises();
+    }
+
+    // SVG Graphics Animation Engine
+    function renderSvgGraphic(type) {
+      const baseFloor = `<line x1="20" y1="150" x2="240" y2="150" stroke="#384a40" stroke-width="4" stroke-linecap="round" />`;
+      
+      switch(type) {
+        case "pushup":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 85 45 L 85 65 M 80 60 L 85 65 L 90 60" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g class="pushup-body">
+              <path d="M 75 85 Q 130 95 210 135 L 205 142 Q 125 108 70 95 Z" fill="#7a8d82" />
+              <circle cx="60" cy="80" r="13" fill="#7a8d82" />
+              <path class="muscle-highlight" d="M 72 88 Q 88 93 92 102 Q 78 102 70 95 Z" />
+              <g class="pushup-upperarm">
+                <path d="M 80 92 Q 95 105 100 120 L 90 123 Q 82 108 75 95 Z" fill="#58695e" />
+                <path class="muscle-highlight" d="M 82 96 Q 93 108 92 118 L 88 120 Q 79 107 78 96 Z" />
+              </g>
+              <g class="pushup-forearm">
+                <path d="M 65 138 L 95 120 L 98 127 L 68 143 Z" fill="#425247" />
+              </g>
+            </g>
+            <circle cx="65" cy="142" r="5" fill="#384a40" />
+          </svg>`;
+
+        case "pushup_knee":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 85 45 L 85 65 M 80 60 L 85 65 L 90 60" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <circle cx="155" cy="145" r="6" fill="#384a40" />
+            <g class="pushupknee-body">
+              <path d="M 75 80 L 155 135 L 175 120" stroke="#7a8d82" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              <circle cx="60" cy="75" r="12" fill="#7a8d82" />
+              <path class="muscle-highlight" d="M 75 82 Q 90 90 95 100 Q 80 100 72 88 Z" />
+              <path d="M 75 85 L 75 145" stroke="#58695e" stroke-width="8" stroke-linecap="round" />
+            </g>
+          </svg>`;
+
+        case "pike":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 70 70 L 55 85" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g class="pike-body">
+              <polyline points="65,135 110,65 165,140" stroke="#7a8d82" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              <circle cx="55" cy="125" r="11" fill="#7a8d82" />
+              <circle class="muscle-highlight" cx="95" cy="85" r="12" />
+            </g>
+          </svg>`;
+
+        case "inverted_row":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <line x1="60" y1="65" x2="160" y2="65" stroke="#384a40" stroke-width="8" stroke-linecap="round" />
+            <path class="motion-arrow" d="M 100 95 L 115 80" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g class="invrow-body">
+              <line x1="70" y1="140" x2="150" y2="85" stroke="#7a8d82" stroke-width="16" stroke-linecap="round" />
+              <circle cx="160" cy="80" r="12" fill="#7a8d82" />
+              <polyline points="135,95 135,65 120,65" stroke="#58695e" stroke-width="7" fill="none" stroke-linecap="round" />
+              <rect class="muscle-highlight" x="100" y="98" width="28" height="12" rx="6" transform="rotate(-30 100 98)" />
+            </g>
+          </svg>`;
+
+        case "towel_row":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <g>
+              <path d="M 130 65 L 130 150" stroke="#7a8d82" stroke-width="18" stroke-linecap="round" />
+              <circle cx="130" cy="48" r="14" fill="#7a8d82" />
+              <g class="towel-arms">
+                <polyline points="85,60 100,85 130,85 160,85 175,60" stroke="#58695e" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+                <line x1="80" y1="58" x2="180" y2="58" stroke="#f5b93f" stroke-width="5" stroke-linecap="round" />
+              </g>
+              <rect class="muscle-highlight" x="115" y="80" width="30" height="18" rx="8" />
+            </g>
+          </svg>`;
+
+        case "reverse_pushup":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <rect x="160" y="95" width="45" height="55" fill="#2d3d33" rx="4" />
+            <path class="motion-arrow" d="M 120 70 L 120 90" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g class="revpush-body">
+              <circle cx="120" cy="55" r="11" fill="#7a8d82" />
+              <path d="M 120 66 L 120 115 L 70 145" stroke="#7a8d82" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              <polyline points="120,75 155,75 155,95" stroke="#58695e" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <circle class="muscle-highlight" cx="138" cy="75" r="9" />
+            </g>
+          </svg>`;
+
+        case "plank":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <g class="plank-pulse">
+              <line x1="55" y1="120" x2="190" y2="132" stroke="#7a8d82" stroke-width="15" stroke-linecap="round" />
+              <circle cx="40" cy="115" r="11" fill="#7a8d82" />
+              <polyline points="55,122 50,148 70,148" stroke="#58695e" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <rect class="muscle-highlight" x="80" y="118" width="50" height="14" rx="7" transform="rotate(5 80 118)" />
+            </g>
+          </svg>`;
+
+        case "crunch":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 90 70 A 20 20 0 0 1 110 85" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <path d="M 140 135 L 180 105 L 210 145 Z" stroke="#425247" stroke-width="12" stroke-linejoin="round" fill="none"/>
+            <g class="crunch-torso">
+              <path d="M 70 130 L 140 135" stroke="#7a8d82" stroke-width="16" stroke-linecap="round"/>
+              <circle cx="55" cy="125" r="12" fill="#7a8d82"/>
+              <path class="muscle-highlight" d="M 90 123 L 130 128" stroke="#ff4757" stroke-width="8" stroke-linecap="round"/>
+            </g>
+          </svg>`;
+
+        case "legraise":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 175 105 A 30 30 0 0 0 150 80" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g>
+              <line x1="50" y1="140" x2="125" y2="140" stroke="#7a8d82" stroke-width="14" stroke-linecap="round" />
+              <circle cx="35" cy="135" r="11" fill="#7a8d82" />
+              <circle class="muscle-highlight" cx="110" cy="138" r="9" />
+              <g class="legraise-legs">
+                <line x1="125" y1="140" x2="200" y2="140" stroke="#58695e" stroke-width="12" stroke-linecap="round" />
+              </g>
+            </g>
+          </svg>`;
+
+        case "squat":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 120 25 L 120 45 M 115 40 L 120 45 L 125 40" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <path d="M 175 150 L 160 115 L 170 112 L 188 150 Z" fill="#425247" />
+            <g class="squat-torso">
+              <path d="M 140 40 Q 155 70 150 105 L 135 102 Q 138 70 125 42 Z" fill="#7a8d82" />
+              <circle cx="132" cy="28" r="12" fill="#7a8d82" />
+              <g class="squat-thigh">
+                <path d="M 148 100 Q 165 110 165 115 L 155 122 Q 140 112 136 102 Z" fill="#58695e" />
+                <path class="muscle-highlight" d="M 140 98 Q 158 106 160 112 L 152 118 Q 135 108 135 102 Z" />
+              </g>
+            </g>
+          </svg>`;
+
+        case "wide_squat":
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 130 30 L 130 50 M 125 45 L 130 50 L 135 45" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none" />
+            <g class="widesquat-body">
+              <circle cx="130" cy="35" r="12" fill="#7a8d82" />
+              <line x1="130" y1="47" x2="130" y2="85" stroke="#7a8d82" stroke-width="16" stroke-linecap="round" />
+              <polyline points="75,150 95,100 130,85 165,100 185,150" stroke="#58695e" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <circle class="muscle-highlight" cx="115" cy="98" r="10" />
+              <circle class="muscle-highlight" cx="145" cy="98" r="10" />
+            </g>
+          </svg>`;
+
+        case "lunge":
+        default:
+          return `<svg viewBox="0 0 260 170">
+            ${baseFloor}
+            <path class="motion-arrow" d="M 130 30 L 130 50 M 125 45 L 130 50 L 135 45" stroke="#ff4757" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <g class="lunge-body">
+              <path d="M 125 90 L 80 90 L 80 150" stroke="#58695e" stroke-width="14" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+              <path class="muscle-highlight" d="M 120 86 L 85 86" stroke="#ff4757" stroke-width="8" stroke-linecap="round"/>
+              <path d="M 125 90 L 170 115 L 170 150" stroke="#425247" stroke-width="12" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+              <path d="M 125 40 L 125 90" stroke="#7a8d82" stroke-width="16" stroke-linecap="round"/>
+              <circle cx="125" cy="28" r="12" fill="#7a8d82"/>
+            </g>
+          </svg>`;
+      }
+    }
+
+    function showGuideModal(name) {
+      const guide = EXERCISE_GUIDES[name];
+      if (!guide) return;
+      document.getElementById('modal-title').textContent = name;
+      document.getElementById('modal-part').textContent = guide.part;
+      document.getElementById('modal-desc').textContent = guide.desc;
+      document.getElementById('modal-illustration').innerHTML = renderSvgGraphic(guide.svgType);
+      const pointsUl = document.getElementById('modal-points');
+      pointsUl.innerHTML = guide.points.map(p => `<li>${p}</li>`).join('');
+      document.getElementById('guide-modal').classList.add('show');
+    }
+    function hideGuideModal() { document.getElementById('guide-modal').classList.remove('show'); }
+    function closeGuideModal(e) { if (e.target.id === 'guide-modal') hideGuideModal(); }
+
+    function initHistoryFormParts() {
+      const container = document.getElementById('hist-edit-parts-container');
+      container.innerHTML = "";
+      MUSCLE_LIST.forEach(m => {
+        container.innerHTML += `
+          <label><input type="checkbox" name="hist-part" value="${m}"> ${m}</label>
+        `;
+      });
+    }
+
+    // --- 履歴フォームの種目追加関連 ---
+
+    function addHistoryExercise() {
+      const selectVal = document.getElementById('hist-edit-exercise-select').value;
+      if (!selectVal) return;
+      const [name, part] = selectVal.split('|');
+      
+      if (!currentHistExercises.find(e => e.name === name)) {
+        currentHistExercises.push({ name, part });
+        
+        const cb = document.querySelector(`input[name="hist-part"][value="${part}"]`);
+        if(cb) cb.checked = true;
+
+        updateHistoryTitleAuto();
+        renderHistoryExerciseTags();
+      }
+    }
+
+    function removeHistoryExercise(name) {
+      currentHistExercises = currentHistExercises.filter(e => e.name !== name);
+      updateHistoryTitleAuto();
+      renderHistoryExerciseTags();
+    }
+
+    function updateHistoryTitleAuto() {
+      const titleInput = document.getElementById('hist-edit-title');
+      if (currentHistExercises.length > 0) {
+         titleInput.value = currentHistExercises.map(e => e.name).join('・');
+      } else {
+         titleInput.value = "自主トレーニング";
+      }
+    }
+
+    function renderHistoryExerciseTags() {
+      const container = document.getElementById('hist-edit-exercise-tags');
+      container.innerHTML = "";
+      currentHistExercises.forEach(ex => {
+        const tag = document.createElement('div');
+        tag.className = "ex-tag";
+        tag.innerHTML = `${ex.name} <button class="ex-tag-del" onclick="removeHistoryExercise('${ex.name}')">✕</button>`;
+        container.appendChild(tag);
+      });
+    }
+
+    // --- /履歴フォーム関連 ---
+
+    function clearHistoryForm() {
+      document.getElementById('hist-edit-date').value = getTodayString();
+      document.getElementById('hist-edit-title').value = "自主トレーニング";
+      document.getElementById('hist-edit-duration').value = "20";
+      document.querySelectorAll('input[name="hist-part"]').forEach(cb => cb.checked = false);
+      document.getElementById('edit-form-title').textContent = "📝 過去・指定日の記録を追加・編集";
+      
+      currentHistExercises = [];
+      renderHistoryExerciseTags();
+    }
+
+    function loadHistoryToForm(index) {
+      if (!state.history || !state.history[index]) return;
+      const rec = state.history[index];
+      document.getElementById('hist-edit-date').value = rec.date || getTodayString();
+      document.getElementById('hist-edit-title').value = rec.title || "";
+      document.getElementById('hist-edit-duration').value = rec.duration || 20;
+      
+      document.querySelectorAll('input[name="hist-part"]').forEach(cb => {
+        cb.checked = rec.parts && rec.parts.includes(cb.value);
+      });
+      document.getElementById('edit-form-title').textContent = "✏️ 記録を編集中";
+
+      currentHistExercises = rec.exercises ? [...rec.exercises] : [];
+      renderHistoryExerciseTags();
+
+      window.scrollTo({ top: document.querySelector('.edit-history-card').offsetTop - 20, behavior: 'smooth' });
+    }
+
+    function saveHistoryRecord() {
+      const dateVal = document.getElementById('hist-edit-date').value;
+      if (!dateVal) { notify("日付を入力してください"); return; }
+      
+      const titleVal = document.getElementById('hist-edit-title').value.trim() || "自主トレーニング";
+      const durationVal = parseInt(document.getElementById('hist-edit-duration').value) || 20;
+      
+      const selectedParts = [];
+      document.querySelectorAll('input[name="hist-part"]:checked').forEach(cb => {
+        selectedParts.push(cb.value);
+      });
+
+      state.history = state.history || [];
+      const existingIdx = state.history.findIndex(h => h.date === dateVal);
+      
+      const recordObj = {
+        date: dateVal,
+        title: titleVal,
+        duration: durationVal,
+        parts: selectedParts,
+        exercises: [...currentHistExercises]
+      };
+
+      if (existingIdx >= 0) {
+        state.history[existingIdx] = recordObj;
+        notify(`${dateVal} の記録を更新しました`);
+      } else {
+        state.history.push(recordObj);
+        state.history.sort((a, b) => new Date(b.date) - new Date(a.date));
+        notify(`${dateVal} の記録を追加しました`);
+      }
+
+      saveData();
+      clearHistoryForm();
+    }
+
+    function deleteHistoryRecord(index) {
+      if (!state.history || !state.history[index]) return;
+      const targetDate = state.history[index].date;
+      if (confirm(`${targetDate} の記録を削除しますか？`)) {
+        state.history.splice(index, 1);
+        saveData();
+        notify(`${targetDate} の記録を削除しました`);
+      }
+    }
+
+    function renderAnalytics() {
+      const cal = document.getElementById('weekly-cal');
+      cal.innerHTML = "";
+      const dayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+      const today = new Date();
+      
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const dayLabel = dayLabels[d.getDay()];
+        
+        const isDone = state.history && state.history.some(h => h.date === dateStr);
+        cal.innerHTML += `<div class="day-box ${isDone ? 'done' : ''}">${d.getDate()}(${dayLabel})<br>${isDone ? '✓' : ''}</div>`;
+      }
+
+      const barsGraph = document.getElementById('volume-bars-graph');
+      barsGraph.innerHTML = "";
+      const volumeCounts = { "胸": 0, "肩": 0, "背中": 0, "腕": 0, "お腹": 0, "脚": 0 };
+      
+      if (state.history) {
+        state.history.forEach(h => {
+          if (h.parts) {
+            h.parts.forEach(p => {
+              if (volumeCounts[p] !== undefined) volumeCounts[p] += 3;
+            });
+          }
+        });
+      }
+
+      const maxVol = Math.max(1, ...Object.values(volumeCounts));
+      Object.entries(volumeCounts).forEach(([part, val]) => {
+        const pct = Math.round((val / maxVol) * 100);
+        barsGraph.innerHTML += `<div class="volume-bar-row"><span class="volume-bar-label">${part}</span><div class="volume-bar-bg"><div class="volume-bar-fill" style="width:${pct}%"></div></div><span class="volume-bar-val">${val}S</span></div>`;
+      });
+
+      const histList = document.getElementById('history-list');
+      histList.innerHTML = "";
+      if (!state.history || state.history.length === 0) {
+        histList.innerHTML = `<p style="text-align:center; color:var(--muted); padding: 10px 0;">まだ履歴はありません。</p>`;
+      } else {
+        state.history.forEach((item, idx) => {
+          const exercisesText = item.exercises && item.exercises.length > 0 
+            ? `<br><span style="color:var(--forest); font-size:12px;">種目: ${item.exercises.map(e=>e.name).join(', ')}</span>`
+            : '';
+
+          histList.innerHTML += `
+            <div class="history-item">
+              <div>
+                <strong>${item.date}</strong> — ${item.title} 
+                <small style="color:var(--muted);">(${item.parts && item.parts.length > 0 ? item.parts.join('・') : '部位指定なし'}, ${item.duration || 20}分)</small>
+                ${exercisesText}
+              </div>
+              <div class="history-btn-group">
+                <button class="btn-sm-edit" onclick="loadHistoryToForm(${idx})">編集</button>
+                <button class="btn-sm-delete" onclick="deleteHistoryRecord(${idx})">削除</button>
+              </div>
+            </div>`;
+        });
+      }
+
+      const bestList = document.getElementById('best-records-list');
+      bestList.innerHTML = "";
+      if (!state.bestRecords || Object.keys(state.bestRecords).length === 0) {
+        bestList.innerHTML = `<p style="text-align:center; color:var(--muted); padding: 10px 0;">まだ記録はありません。ワークアウトを完了すると自動更新されます。</p>`;
+      } else {
+        Object.entries(state.bestRecords).forEach(([name, rec]) => {
+          bestList.innerHTML += `<div style="padding:10px 0; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;"><strong>${name}</strong> <span>${rec.weight > 0 ? rec.weight + 'kg / ' : ''}${rec.reps}${rec.unit} (${rec.sets}セット)</span></div>`;
+        });
+      }
+    }
+
+    function switchTab(tabKey) {
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.innerText.includes(tabKey==='workout'?'ワークアウト':tabKey==='analytics'?'分析':'設定')));
+      document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+      document.getElementById(`tab-${tabKey}`).classList.add('active');
+    }
+
+    function saveSettings() {
+      state.settings.level = document.getElementById('setting-level').value;
+      state.settings.time = document.getElementById('setting-time').value;
+      state.settings.freq = document.getElementById('setting-freq').value;
+      state.completedToday = false;
+      state.activeWorkout = generateWorkout();
+      saveData();
+      notify("設定を保存しメニューを再調整しました");
+    }
+
+    function toggleSet(exIndex, setIdx) {
+      if (!state.activeWorkout || !state.activeWorkout[exIndex]) return;
+      state.activeWorkout[exIndex].completedSets = state.activeWorkout[exIndex].completedSets === setIdx + 1 ? setIdx : setIdx + 1;
+      saveData();
+    }
+    
+    function adjustReps(exIndex, delta) {
+      if (!state.activeWorkout || !state.activeWorkout[exIndex]) return;
+      state.activeWorkout[exIndex].reps = Math.max(1, state.activeWorkout[exIndex].reps + delta);
+      saveData();
+    }
+    
+    function adjustWeight(exIndex, val) {
+      if (!state.activeWorkout || !state.activeWorkout[exIndex]) return;
+      state.activeWorkout[exIndex].weight = Math.max(0, parseInt(val) || 0);
+      saveDataSilent();
+    }
+    
+    function adjustSets(exIndex, delta) {
+      if (!state.activeWorkout || !state.activeWorkout[exIndex]) return;
+      state.activeWorkout[exIndex].sets = Math.max(1, state.activeWorkout[exIndex].sets + delta);
+      saveData();
+    }
+    
+    function removeExercise(exIndex) {
+      if (!state.activeWorkout || !state.activeWorkout[exIndex]) return;
+      const removed = state.activeWorkout.splice(exIndex, 1);
+      saveData();
+      notify(`${removed[0].name} を削除しました`);
+    }
+
+    function addCustomExercise() {
+      const selectVal = document.getElementById('custom-select').value;
+      if (!selectVal) return;
+      const [name, part] = selectVal.split('|');
+      
+      const baseExPool = EXERCISE_DB[part].filter(ex => ex.name === name);
+      if (baseExPool.length === 0) return;
+      const baseEx = baseExPool[0];
+      
+      state.completedToday = false;
+      state.activeWorkout = state.activeWorkout || [];
+      state.activeWorkout.push({
+        name: name,
+        part: part,
+        reps: baseEx.baseReps,
+        unit: baseEx.unit || "回",
+        sets: baseEx.sets,
+        isWeighted: baseEx.isWeighted || false,
+        weight: baseEx.isWeighted ? 5 : 0,
+        completedSets: 0,
+        equipment: baseEx.equipment
+      });
+      saveData();
+      notify(`${name}を追加しました`);
+    }
+
+    let timerInterval;
+    function startTimer(sec) {
+      clearInterval(timerInterval);
+      let timeLeft = sec;
+      const updateTimerDisplay = () => {
+        const m = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+        const s = String(timeLeft % 60).padStart(2, '0');
+        document.getElementById('timer-display').textContent = `${m}:${s}`;
+      };
+      updateTimerDisplay();
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft >= 0) {
+          updateTimerDisplay();
+        } else {
+          clearInterval(timerInterval);
+          notify("⏰ インターバル終了！次のセットへ");
+          resetTimer();
+        }
+      }, 1000);
+    }
+    function resetTimer() { clearInterval(timerInterval); document.getElementById('timer-display').textContent = "00:45"; }
+
+    function completeWorkout() {
+      if (!state.activeWorkout || state.activeWorkout.length === 0) return;
+      
+      // 紙吹雪アニメーションを発射
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 150,
+          spread: 70,
+          origin: { y: 0.6 },
+          zIndex: 9999
+        });
+      }
+
+      const todayStr = getTodayString();
+      
+      if (state.lastCompletedDate !== todayStr) {
+        if (state.lastCompletedDate) {
+          const lastDate = new Date(state.lastCompletedDate);
+          const currDate = new Date(todayStr);
+          const diffDays = Math.round((currDate - lastDate) / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) {
+            state.streak = (state.streak || 0) + 1;
+          } else if (diffDays > 1) {
+            state.streak = 1;
+          }
+        } else {
+          state.streak = 1;
+        }
+        state.lastCompletedDate = todayStr;
+      }
+
+      state.bestRecords = state.bestRecords || {};
+      state.activeWorkout.forEach(ex => {
+        const currentBest = state.bestRecords[ex.name];
+        const currentScore = (ex.weight || 0) * 100 + ex.reps;
+        const bestScore = currentBest ? (currentBest.weight || 0) * 100 + currentBest.reps : 0;
+        
+        if (currentScore >= bestScore) {
+          state.bestRecords[ex.name] = {
+            weight: ex.weight || 0,
+            reps: ex.reps,
+            unit: ex.unit,
+            sets: ex.sets
+          };
+        }
+      });
+      
+      state.history = state.history || [];
+      state.history.unshift({ 
+        date: todayStr, 
+        title: "本日決定メニュー", 
+        duration: parseInt(state.settings.time) || 20, 
+        parts: [...new Set(state.activeWorkout.map(ex => ex.part))],
+        exercises: state.activeWorkout.map(ex => ({ name: ex.name, part: ex.part }))
+      });
+      
+      state.completedToday = true;
+      state.activeWorkout = null;
+      resetTimer();
+      updateStreakDisplay();
+      notify("🎉 ワークアウト完了！記録しました。");
+      saveData();
+    }
+
+    function updateStreakDisplay() {
+      document.getElementById('streak-num').innerText = state.streak || 0;
+    }
+
+    function resetAllData() {
+      if (confirm("すべての記録と設定を初期化しますか？")) {
+        localStorage.removeItem('liftly_final_v3');
+        location.reload();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', loadData);
+  </script>
+</body>
+</html>
